@@ -1,0 +1,34 @@
+{
+  "name": "coffeerest-api-db",
+  "version": "0.1.0",
+  "description": "Unfancy rest apis, connect any db (redis/mysql/mongodb/etc) to coffeerest",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/coderofsalvation/coffeerest-api-db"
+  },
+  "keywords": [
+    "coffeerest",
+    "coffeescript",
+    "rest",
+    "api",
+    "database",
+    "adapter",
+    "mysql",
+    "redis",
+    "mongodb",
+    "couchdb"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "jugglingdb": "^1.0.2"
+  },
+  "bugs": {
+    "url": "https://github.com/coderofsalvation/coffeerest-api-db/issues"
+  },
+  "homepage": "https://github.com/coderofsalvation/coffeerest-api-db"
+}
