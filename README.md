@@ -88,3 +88,14 @@ for more info / servercode see [coffeerest-api](https://www.npmjs.com/package/co
     $ curl -H 'Content-Type: application/json' -X DELETE http://localhost:$PORT/v1/article/1 
 
 Voila! all api-endpoints are generated, validated and connected to a database store of your choice (using jugglingdb)!
+
+## Tag system 
+
+coffeerest-api-db also includes a tag/permission system.
+What is that?
+Well..this was inspired by roundup tracker.
+It allows tagging database-objects and adding permissions to tags.
+The aim is to offer extendability to a databasedesign without fiddling with code.
+For example, many 'could you add this extra field in the database'-featurerequest or 'hey we need an extra category'-featurerequest could be prevented by just having tag-features. 
+
+*need more docs here*
