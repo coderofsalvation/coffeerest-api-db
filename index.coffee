@@ -1,12 +1,23 @@
 Schema = require("jugglingdb").Schema
 clone = (obj) -> JSON.parse JSON.stringify obj
+asyncEventEmitter = require('async-eventemitter');
 
 module.exports = (server, model, lib, urlprefix ) ->
 
-  @.authenticate = () -> return true
+  @.events = new asyncEventEmitter()
+
+  @.get_tags = (collectionname, collections, item, cb) ->
+    tagobj = collections[ collectionname+"_tag" ].jugglingdb
+    tagobj.all {}, (err,tags) ->
+      item.tags = {}
+      for tag in tags 
+        if tag.id in item.tags_ids
+          item.tags[tag.name] = true 
+          (item.tags[subtag] = true for subtag in tag.subtags) if tag.subtags?
+      cb(item.tags)
 
   @.reply_with_data = (reply,err,item,kind) ->
-    reply.kind = kind
+    reply.kind = String(kind).replace(/\//,"_")
     if err
       reply.code = 3 
       reply.message = err
@@ -46,11 +57,13 @@ module.exports = (server, model, lib, urlprefix ) ->
   schema = new Schema model.db.type, model.db.config 
   @.collections = {}
      
-  @.registerRest = (colname,collection,collections) ->
+  @.registerRest = (colname,collection,collections,lib) ->
     me = @
     collectionname = colname.replace("/","_")
     model.resources[ "/"+colname ] =
       post: clone collection.resource.schema
+    model.resources[ "/"+colname+'/all' ] =
+      get: clone collection.resource.schema
     model.resources[ "/"+colname+'/:id' ] =
       get: clone collection.resource.schema
       del: clone collection.resource.schema
@@ -58,63 +71,102 @@ module.exports = (server, model, lib, urlprefix ) ->
 
     # del and get dont need payload 
     delete model.resources[ "/"+colname+'/:id'].get.payload
+    delete model.resources[ "/"+colname+'/all'].get.payload
     delete model.resources[ "/"+colname+'/:id'].del.payload
 
-    model.resources[ "/"+colname+'/:id'].get.description = collection.resource.schema.description || "retrieves a "+k+" from the database"
-    model.resources[ "/"+colname+'/:id'].get.function =  collection.resource.schema.function || (req, res, next, lib, reply ) ->
-      obj = collection.jugglingdb
-      obj.all {where:{ id: req.params.id}}, (err,item) ->
-        if err
-          res.send @.reply_with_data reply, err, item, colname if err
-        else 
-          res.send @.reply_with_data reply, err, item[0], colname
-        next()
+    path = '/'+colname+'/:id'
+    model.resources[ path ].get.description = collection.resource.schema.description || "retrieves a "+k+" from the database"
+    model.resources[ path ].get.function =  collection.resource.schema.function || (req, res, next, lib, reply ) ->
+      me.events.emit 'onResourceCall', { method: 'get', path: path, req: req, res: res, lib: lib, reply: reply, collectionname:collectionname,collection:collection,collections:collections}, (err) ->
+        return res.send @.reply_with_data reply, err.toString(), false, colname if err
+        obj = collection.jugglingdb
+        obj.all {where:{ id: req.params.id},limit:1}, (err,item) ->
+          if err
+            res.send @.reply_with_data reply, err, item, colname if err
+          else 
+            item = item[0]
+            if item.tags_ids? # automatically retrieve tags if any
+              me.get_tags collectionname, collections, item, (tags) ->
+                item.tags = tags
+                res.send @.reply_with_data reply, err, item, colname
+            else
+              res.send @.reply_with_data reply, err, item, colname
+          next()
       return false
 
-    model.resources[ '/'+colname+'/:id' ].del.description = collection.resource.schema.description || "deletes a "+k+" from the database"
-    model.resources[ '/'+colname+'/:id' ].del.function  = collection.resource.schema.function || (req, res, next, lib, reply ) ->
-      obj = collection.jugglingdb
-      obj.all {where:{ id: req.params.id}}, (err,item) ->
-        if err 
-          res.send @.reply_with_data reply, err, item, colname if err
-        else
-        item[0].destroy (err) ->
-          reply.message = "deleted succesfully" if not err
-          res.send @.reply_with_data reply, err, {}, colname
-        next()
+    model.resources[ path ].del.description = collection.resource.schema.description || "deletes a "+k+" from the database"
+    model.resources[ path ].del.function  = collection.resource.schema.function || (req, res, next, lib, reply ) ->
+      me.events.emit 'onResourceCall', { method: 'del', path: path, req: req, res: res, lib: lib, reply: reply, collectionname:collectionname,collection:collection,collections:collections}, (err) ->
+        return res.send @.reply_with_data reply, err.toString(), false, colname if err
+        obj = collection.jugglingdb
+        obj.all {where:{ id: req.params.id},limit:1}, (err,item) ->
+          if err 
+            res.send @.reply_with_data reply, err, item, colname if err
+          else
+          item[0].destroy (err) ->
+            reply.message = "deleted succesfully" if not err
+            res.send @.reply_with_data reply, err, {}, colname
+          next()
       return false
 
-    model.resources[ "/"+colname ].post.description = collection.resource.schema.description || "inserts a "+k+" to the database"
-    model.resources[ "/"+colname ].post.payload = collection.resource.schema.payload 
-    model.resources[ "/"+colname ].post.function = collection.resource.schema.function || (req, res, next, lib, reply ) ->
-      obj = new collection.jugglingdb()
-      obj[k] = v for k,v of req.body
-      obj.save (err,item) ->
-        reply.kind = collectionname 
-        res.send @.reply_with_data reply, err, item
-        next()
+    model.resources[ path ].put.payload = collection.resource.schema.payload 
+    model.resources[ path ].put.description = collection.resource.schema.description || "updates an existing "+k+" in the database"
+    model.resources[ path ].put.function  = collection.resource.schema.function || (req, res, next, lib, reply ) ->
+      me.events.emit 'onResourceCall', { method: 'put', path: path, req: req, res: res, lib: lib, reply: reply, collectionname:collectionname,collection:collection,collections:collections}, (err) ->
+        return res.send @.reply_with_data reply, err.toString(), false, colname if err
+        obj = new collection.jugglingdb()
+        req.body.id = req.params.id
+        obj[k] = v for k,v of req.body
+        obj.save (err,item) ->
+          res.send @.reply_with_data reply, err, item, colname
+          next()
+      return false
+    
+    path = '/'+colname+'/all'
+    model.resources[ path ].get.description = collection.resource.schema.description || "retrieves a "+k+" from the database"
+    model.resources[ path ].get.function =  collection.resource.schema.function || (req, res, next, lib, reply ) ->
+      me.events.emit 'onResourceCall', { method: 'get', path: path, req: req, res: res, lib: lib, reply: reply, collectionname:collectionname,collection:collection,collections:collections}, (err) ->
+        return res.send @.reply_with_data reply, err.toString(), false, colname if err
+        obj = collection.jugglingdb
+        obj.all {}, (err,items) ->
+          if err
+            res.send @.reply_with_data reply, err, items, colname if err
+          else 
+            res.send @.reply_with_data reply, err, items, colname
+          next()
+      return false
+
+    path = '/'+colname
+    model.resources[ path ].post.description = collection.resource.schema.description || "inserts a "+k+" to the database"
+    model.resources[ path ].post.payload = collection.resource.schema.payload 
+    model.resources[ path ].post.function = collection.resource.schema.function || (req, res, next, lib, reply ) ->
+      me.events.emit 'onResourceCall', { method: 'post', path: path, req: req, res: res, lib: lib, reply: reply, collectionname:collectionname,collection:collection,collections:collections}, (err) ->
+        return res.send @.reply_with_data reply, err.toString(), false, colname if err
+        obj = new collection.jugglingdb()
+        obj[k] = v for k,v of req.body
+        obj.save (err,item) ->
+          reply.kind = collectionname 
+          res.send @.reply_with_data reply, err, item
       return false 
-
-    model.resources[ '/'+colname+'/:id' ].put.payload = collection.resource.schema.payload 
-    model.resources[ '/'+colname+'/:id' ].put.description = collection.resource.schema.description || "updates an existing "+k+" in the database"
-    model.resources[ '/'+colname+'/:id' ].put.function  = collection.resource.schema.function || (req, res, next, lib, reply ) ->
-      obj = new collection.jugglingdb()
-      req.body.id = req.params.id
-      obj[k] = v for k,v of req.body
-      obj.save (err,item) ->
-        res.send @.reply_with_data reply, err, item, colname
-        next()
-      return false
 
   # define models 
   for collectionname,resource of model.db.resources 
+    resource.schema.payload.tags_ids = { type: "array", items: [{type:"integer"}], description: 'array of tag ids which belong to user',default: [1,3]} if resource.schema.taggable?
     s = jsonschema2jugglingschema resource
     collection = {}; (collection[k] = v if k not in ["hasMany","belongsTo"]) for k,v of s
+    collection['tags'] = { type: Schema.JSON } if resource.schema.taggable?
     console.log "creating db collection: "+collectionname
     @.collections[collectionname] =
       resource: resource 
       jugglingdb: schema.define( collectionname, collection )
-
+    jevents = ["afterInitialize","beforeCreate","afterCreate","beforeSave","afterSave","beforeUpdate","afterUpdate","beforeDestroy","afterDestroy","beforeValidate","afterValidate"]
+    me = @
+    for event in jevents
+      @.collections[collectionname].jugglingdb[event] = ( (event,collectionname,collections) ->
+        (next,data) -> 
+          me.events.emit event, {collectionname: collectionname, collections:collections, data:data }, next
+      )(event, collectionname, collections)
+      
   # define relations
   for collectionname,resource of model.db.resources 
     for k,v of resource
@@ -137,37 +189,23 @@ module.exports = (server, model, lib, urlprefix ) ->
             description: colname+" tags "
             payload:
               name:      { type: "string",  required:true, default: "is user" }
-              permissions: 
+              subtags: 
                 type: "array"
-                default: [{
-                  resource: "/user/:id"
-                  method: "get"
-                  fields: ["update user email"]
-                }]
-                items: [{
-                  type: "object"
-                  properties: 
-                    resource: { type: "string", default: "/article/:id" }
-                    method: { type: "string", enum:["get","del","post","put"], default: "get" }
-                    fields:
-                      type: "array"
-                      item: [{ type: "string" }]
-                }]
+                items: [{ type: "string" }]
+                default: ["can create,read,update user email"]
         ts = jsonschema2jugglingschema resource
         tagcollection = {}; (tagcollection[kk] = vv if kk not in ["hasMany","belongsTo"]) for kk,vv of ts
         collections[ colname+"_tag" ] = 
           resource: resource
           jugglingdb: schema.define( colname+"_tag", tagcollection )
         registerRest tagcolname, collections[ colname+"_tag" ], collections
-        collection.jugglingdb.hasMany collections[ colname+"_tag" ].jugglingdb, { as: 'tags',  foreignKey: 'tag_id' }
-        collections[ colname+"_tag" ].jugglingdb.belongsTo collection.jugglingdb, { as: colname+'s', foreignKey: 'tag_id' }
+        #collection.jugglingdb.hasMany collections[ colname+"_tag" ].jugglingdb, { as: 'tags',  foreignKey: 'user_id' }
+        #collections[ colname+"_tag" ].jugglingdb.belongsTo collection.jugglingdb, { as: colname+'s', foreignKey: 'user_id' }
     )(k,collection,@.collections)
 
   console.log "TODO: dbrelations + jsonform2api"
 
-  lib.coffeerest = {} if not lib.coffeerest?
-  lib.coffeerest.db = @
-
+  return @
   ###
   # define any custom method 
   User::getNameAndAge = ->
