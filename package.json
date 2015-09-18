@@ -25,8 +25,8 @@
   ],
   "license": "ISC",
   "dependencies": {
-    "jugglingdb": "^1.0.2",
-    "async-eventemitter": "^0.2.2"
+    "async-eventemitter": "^0.2.2",
+    "waterline": "^0.10.26"
   },
   "bugs": {
     "url": "https://github.com/coderofsalvation/coffeerest-api-db/issues"

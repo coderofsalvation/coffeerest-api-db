@@ -58,6 +58,8 @@ Just add these fields to your coffeerest-api `model.coffee` specification
 
     npm install coffeerest-api
     npm install coffeerest-api-db
+    npm install sails-mysql          <-- install the waterline adapter of your liking
+
 
 for more info / servercode see [coffeerest-api](https://www.npmjs.com/package/coffeerest-api)
 
@@ -97,5 +99,16 @@ Well..this was inspired by roundup tracker.
 It allows tagging database-objects and adding permissions to tags.
 The aim is to offer extendability to a databasedesign without fiddling with code.
 For example, many 'could you add this extra field in the database'-featurerequest or 'hey we need an extra category'-featurerequest could be prevented by just having tag-features. 
+
+## REST query logic 
+
+Basically its Sails waterline any-database-interface under the hood.
+It features:
+
+* populate relations to other collections on demand>
+
+> http://foo.com/v1/user?populate=tags,groups
+
+
 
 *need more docs here*
