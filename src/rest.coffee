@@ -110,7 +110,7 @@ module.exports = (server, model, lib, urlprefix, parent ) ->
       delete model.resources[ path ].get.payload
       model.resources[ path ].get.description = resource.schema.description || "tags "+k+" with :tagid"
       model.resources[ path ].get.function = resource.schema.function || (req, res, next, lib, reply ) ->
-        me.events.emit 'onResourceCall', { method: 'put', path: path, req: req, res: res, lib: lib, reply: reply, emitter: parent }, (err) ->
+        me.events.emit 'onResourceCall', { method: 'get', path: path, req: req, res: res, lib: lib, reply: reply, emitter: parent }, (err) ->
           return res.send @.reply_with_data reply, err.toString(), false, colname if err
           db.collections[ parentcolname ].find {id:req.params[ parentcolname+'id' ]}
           .populate('tags')
@@ -127,35 +127,39 @@ module.exports = (server, model, lib, urlprefix, parent ) ->
       delete model.resources[ path ].get.payload
       model.resources[ path ].get.description = resource.schema.description || "tags "+k+" with :tagid"
       model.resources[ path ].get.function = resource.schema.function || (req, res, next, lib, reply ) ->
-        me.events.emit 'onResourceCall', { method: 'put', path: path, req: req, res: res, lib: lib, reply: reply, emitter: parent }, (err) ->
+        me.events.emit 'onResourceCall', { method: 'get', path: path, req: req, res: res, lib: lib, reply: reply, emitter: parent }, (err) ->
           return res.send @.reply_with_data reply, err.toString(), false, colname if err
           db.collections[ parentcolname ].find {id:req.params[ parentcolname+'id' ]}
           .populate('tags')
-          .then ( items )->
+          .then ( items ) ->
             err = parentcolname+" not found" if not items[0]?
             return res.send @.reply_with_data reply, err, {}, "error" if err
             items[0].tags.add req.params.tagid
             items[0].save()
+            .catch (data) ->  
+              console.log data 
             reply.message = "added tagid "+req.params.tagid
             res.send @.reply_with_data reply, false, {}, colname
           .catch (err) -> res.send @.reply_with_data reply, err, false, colname
         return false 
 
-      path = '/'+colname+'/:'+parts[0]+'id/:tagid/disable'
+      path = '/'+colname+'/:'+parentcolname+'id/:tagid/disable'
       model.resources[ path ] =
         get: clone resource.schema
       delete model.resources[ path ].get.payload
       model.resources[ path ].get.description = resource.schema.description || "tags "+k+" with :tagid"
       model.resources[ path ].get.function = resource.schema.function || (req, res, next, lib, reply ) ->
-        me.events.emit 'onResourceCall', { method: 'put', path: path, req: req, res: res, lib: lib, reply: reply, emitter: parent }, (err) ->
+        me.events.emit 'onResourceCall', { method: 'get', path: path, req: req, res: res, lib: lib, reply: reply, emitter: parent }, (err) ->
           return res.send @.reply_with_data reply, err.toString(), false, colname if err
           db.collections[ parentcolname ].find {id:req.params[ parentcolname+'id' ]}
           .populate('tags')
-          .then ( items )->
+          .then ( items ) ->
             err = parentcolname+" not found" if not items[0]?
             return res.send @.reply_with_data reply, err, {}, "error" if err
             items[0].tags.remove req.params.tagid
             items[0].save()
+            .catch (data) ->  
+              console.log data 
             reply.message = "removed tagid "+req.params.tagid
             res.send @.reply_with_data reply, false, {}, colname
           .catch (err) -> res.send @.reply_with_data reply, err, false, colname
